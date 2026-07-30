@@ -1,0 +1,23 @@
+# ansible-lint 설정
+#   uv run ansible-lint
+#
+# 아래 규칙들은 이 프로젝트에서 의도적으로 제외한다. 이유를 함께 적어둔다.
+
+exclude_paths:
+  - .venv/
+  - .git/
+
+skip_list:
+  # task 이름을 한국어로 쓰므로 "대문자로 시작" 규칙을 적용할 수 없다.
+  - name[casing]
+
+  # curl | sh 를 get_url/uri 모듈로 바꾸라는 규칙.
+  # k3s / docker / helm 공식 설치 방법이 이 형태이고, 손으로 치던 명령을
+  # 그대로 옮기는 것이 이 플레이북의 목적이므로 유지한다.
+  # (pipefail 은 risky-shell-pipe 대응으로 모두 적용해뒀다)
+  - command-instead-of-module
+
+  # run_once 가 strategy: free 에서 다르게 동작한다는 경고.
+  # 이 플레이북은 기본 strategy(linear)를 쓰고,
+  # delegate_to: localhost + run_once 는 표준 관용구다.
+  - run-once[task]

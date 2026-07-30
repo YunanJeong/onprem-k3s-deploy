@@ -1,0 +1,25 @@
+[project]
+# Ansible 은 파이썬 패키지다. uv 로 이 프로젝트 전용 격리환경에 설치한다.
+# 시스템 전역(apt/pip)에 깔지 않으므로 다른 작업과 버전이 섞이지 않는다.
+#
+#   uv sync                                  # .venv 생성 + 의존성 설치
+#   uv run ansible --version                 # 실행
+#   uv run ansible-playbook site.yml         # 실행
+#
+name = "onprem-k3s-deploy"
+version = "0.1.0"
+description = "온프레미스 서버에 k3s 클러스터를 구성하는 Ansible 플레이북"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    # ansible = ansible-core + 공식 collection 묶음.
+    # ansible-core 만 깔면 모듈이 부족해 ansible-galaxy 로 따로 받아야 한다.
+    "ansible>=10,<12",
+]
+
+[dependency-groups]
+# 개발/검증용. 배포 대상 서버와는 무관하다.
+dev = [
+    "ansible-lint>=24",
+]

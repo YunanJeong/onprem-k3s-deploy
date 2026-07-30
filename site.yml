@@ -1,0 +1,286 @@
+---
+# ══════════════════════════════════════════════════════════════════════
+# 플레이북 (playbook) — "무엇을" 할지
+#
+#   실행:  ansible-playbook site.yml
+#
+# "- hosts:" 블록 하나가 play 이고, 그게 모인 이 파일이 playbook 이다.
+# 파일 이름은 자유다 (실행할 때 직접 지목하니까). site.yml 은 관례.
+#
+# Ansible 은 k3s 가 뭔지 모른다. 아래 curl 명령어가 곧 전부다.
+# ── 표기 ──
+#   hosts/tasks/become/name/register/environment/args/no_log = Ansible 예약어
+#   ansible.builtin.*                                        = 모듈 이름
+#   k3s_server / k3s_agent / token_raw                       = 내가 지은 이름
+#   https://get.k3s.io / K3S_TOKEN / /var/lib/rancher/...    = 그냥 문자열
+# ══════════════════════════════════════════════════════════════════════
+
+
+# ── 0-A. 인벤토리 존재 확인 ───────────────────────────────────────────
+# 호스트가 0대면 Ansible 은 종료코드 0 으로 조용히 끝난다 (성공처럼 보인다).
+- name: "0-A. 인벤토리 확인"
+  hosts: localhost
+  gather_facts: false
+  become: false
+  tasks:
+    - name: k3s 그룹에 호스트가 있는지 확인
+      ansible.builtin.assert:
+        that: groups.get('k3s', []) | length > 0
+        fail_msg: >-
+          인벤토리에 대상 호스트가 없다. 먼저 복사해서 실제 값을 채워라 —
+          cp inventory.ini.example inventory.ini  →  vi inventory.ini
+        success_msg: >-
+          대상 {{ groups.get('k3s', []) | length }}대:
+          {{ groups.get('k3s', []) | join(', ') }}
+        quiet: true
+
+
+# ── 0-B. 사전 점검 ────────────────────────────────────────────────────
+# 아무것도 바꾸지 않는다. 잘못된 전제로 설치 시작하는 걸 막는 용도.
+- name: "0-B. 사전 점검"
+  hosts: k3s
+  gather_facts: true
+  tasks:
+    - name: server 그룹이 정확히 1대인지 확인
+      ansible.builtin.assert:
+        that: groups['k3s_server'] | default([]) | length == 1
+        fail_msg: >-
+          이 playbook 은 k3s server 1대 구성을 전제로 한다.
+          현재 k3s_server 그룹: {{ groups['k3s_server'] | default([]) }}
+          (HA 구성은 README 의 '한계' 항목 참고)
+      run_once: true
+      delegate_to: localhost
+      become: false
+
+    - name: sudo 승격이 되는지 확인
+      ansible.builtin.command: id -u
+      become: true
+      register: sudo_check
+      changed_when: false
+      failed_when: sudo_check.stdout | trim != "0"
+
+    # Debian/RedHat 만 허용한다. 1번 play 의 패키지 설치가 apt/dnf 분기뿐이라,
+    # 다른 OS 를 통과시키면 패키지가 조용히 안 깔린 채로 진행된다.
+    # SUSE 등을 쓰려면 zypper task 를 먼저 추가해라.
+    - name: 지원 OS 인지 확인
+      ansible.builtin.assert:
+        that: ansible_facts['os_family'] in ['Debian', 'RedHat']
+        fail_msg: >-
+          지원하지 않는 OS: {{ ansible_facts['os_family'] }}
+          (1번 play 에 해당 OS 의 패키지 설치 task 를 추가해야 한다)
+
+
+# ── 1. 전 노드 공통 ───────────────────────────────────────────────────
+- name: "1. 전 노드 공통 준비"
+  hosts: k3s
+  become: true
+  tasks:
+    # extra_packages 를 inventory/group_vars 에 정의하면 여기에 추가로 깔린다.
+    # 예) group_vars/k3s.yml 에  extra_packages: [stern, yq]
+    - name: 기본 패키지 (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name: "{{ ['curl', 'git', 'jq', 'ca-certificates', 'apt-transport-https']
+                  + (extra_packages | default([])) }}"
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: 기본 패키지 (RHEL 계열)
+      ansible.builtin.dnf:
+        name: "{{ ['curl', 'git', 'jq', 'ca-certificates']
+                  + (extra_packages | default([])) }}"
+        state: present
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    # k3s 는 자체 containerd 를 쓴다. 이 docker 는 클러스터와 무관하며
+    # 로컬 이미지 빌드용이다. 필요 없으면 inventory 에서 install_docker=false
+    - name: docker 설치
+      # pipefail 없으면 curl 이 실패해도 sh 가 빈 입력을 받고 0 을 반환한다.
+      # → task 가 성공으로 뜨는데 실제로는 아무것도 안 깔린다. 반드시 필요하다.
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -fsSL https://get.docker.com | sh
+      args:
+        creates: /usr/bin/docker   # 이 파일 있으면 skip → 재실행 안전
+        executable: /bin/bash      # pipefail 은 bash 기능 (dash 에는 없다)
+      when: install_docker | bool
+
+    - name: docker 서비스 활성화
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+      when: install_docker | bool
+
+    # 주의: 그룹 변경은 재로그인 후에 적용된다.
+    # 첫 실행 뒤 SSH 를 다시 붙어야 sudo 없이 docker ps 가 된다.
+    - name: 접속 계정을 docker 그룹에 추가
+      ansible.builtin.user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: true
+      when: install_docker | bool
+
+
+# ── 2. k3s server (컨트롤플레인) ──────────────────────────────────────
+- name: "2. k3s server 설치"
+  hosts: k3s_server
+  become: true
+  tasks:
+    # ↓↓↓ 여기가 실제로 k3s 를 설치하는 부분. 손으로 치던 명령 그대로다.
+    - name: k3s server 설치
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -sfL https://get.k3s.io | sh -s - server \
+          --write-kubeconfig-mode 644 {{ k3s_server_args | default('') }}
+      args:
+        creates: /usr/local/bin/k3s
+        executable: /bin/bash
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+
+    - name: k3s 서비스 활성화 확인
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+        enabled: true
+
+    - name: API 서버(6443) 준비 대기
+      ansible.builtin.wait_for:
+        port: 6443
+        host: 127.0.0.1
+        timeout: 300
+
+    # agent 가 join 할 때 쓸 토큰을 읽어온다.
+    # slurp = 리모트 파일을 base64 로 읽어 변수에 담는 모듈
+    - name: join 토큰 읽기
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: token_raw       # ← 내가 지은 변수명. 3번 play 에서 꺼내 쓴다
+      no_log: true              # 토큰이 로그에 찍히지 않게
+
+    - name: kubectl 심볼릭 링크
+      # k3s 설치 스크립트가 이미 만들지만, 없는 경우를 대비. 멱등하다.
+      ansible.builtin.file:
+        src: /usr/local/bin/k3s
+        dest: /usr/local/bin/kubectl
+        state: link
+        force: true
+
+    - name: KUBECONFIG 환경변수 등록
+      ansible.builtin.copy:
+        dest: /etc/profile.d/k3s.sh
+        content: |
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        mode: "0644"
+
+
+# ── 3. k3s agent (워커) — server 의 토큰으로 join ─────────────────────
+- name: "3. k3s agent 설치 및 join"
+  hosts: k3s_agent
+  become: true
+  vars:
+    # 2번 play 에서 server 노드가 읽은 값을 hostvars 로 꺼낸다.
+    # 손으로 토큰 복붙하던 과정을 대체하는 부분이다.
+    _server_host: "{{ groups['k3s_server'][0] }}"
+    k3s_url: "https://{{ hostvars[_server_host].ansible_host
+                         | default(_server_host) }}:6443"
+    k3s_token: "{{ hostvars[_server_host].token_raw.content | b64decode | trim }}"
+  tasks:
+    - name: server 토큰이 넘어왔는지 확인
+      ansible.builtin.assert:
+        that: hostvars[_server_host].token_raw is defined
+        fail_msg: >-
+          server 노드의 토큰을 읽지 못했다.
+          -l 로 agent 만 지정해서 돌리면 이렇게 된다.
+          server 노드를 함께 포함해서 실행해라.
+
+    - name: k3s agent 설치 + 클러스터 join
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s
+        executable: /bin/bash
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+        K3S_URL: "{{ k3s_url }}"       # k3s 스크립트가 읽는 환경변수
+        K3S_TOKEN: "{{ k3s_token }}"   # (Ansible 예약어가 아니다)
+      no_log: true                     # 토큰 노출 방지
+
+    - name: k3s-agent 서비스 활성화 확인
+      ansible.builtin.systemd:
+        name: k3s-agent
+        state: started
+        enabled: true
+
+
+# ── 4. CLI 도구 (server 노드) ─────────────────────────────────────────
+- name: "4. CLI 도구 설치"
+  hosts: k3s_server
+  become: true
+  tasks:
+    - name: helm 설치
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      args:
+        creates: /usr/local/bin/helm
+        executable: /bin/bash
+      when: install_cli_tools | bool
+
+    # GitHub 릴리스 tarball 은 unarchive 가 URL 을 직접 받아서 깔끔하다
+    - name: k9s 설치
+      ansible.builtin.unarchive:
+        src: "https://github.com/derailed/k9s/releases/download/{{ k9s_version }}/k9s_Linux_amd64.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        include:
+          - k9s
+        mode: "0755"
+        creates: /usr/local/bin/k9s
+      when: install_cli_tools | bool
+
+
+# ── 5. kubeconfig 를 내 PC 로 가져오기 ────────────────────────────────
+# 이 play 만 방향이 반대다 (서버 → 내 PC).
+# 내 노트북에서 바로 kubectl 을 쓰기 위한 것. 서버에 SSH 붙어서 쓸 거면
+# inventory 에서 fetch_kubeconfig=false 로 끄면 된다.
+- name: "5. kubeconfig 가져오기"
+  hosts: k3s_server
+  gather_facts: false
+  tasks:
+    # slurp 로 내용만 읽어온다. fetch 를 쓰면 원본(127.0.0.1)을 매번 새로
+    # 내려받아 덮어쓰기 때문에 실행마다 changed 로 뜬다.
+    - name: kubeconfig 내용 읽기
+      ansible.builtin.slurp:
+        src: /etc/rancher/k3s/k3s.yaml
+      become: true
+      register: kubeconfig_raw
+      no_log: true              # 인증서가 담겨 있다
+      when: fetch_kubeconfig | bool
+
+    # 원본에는 server: https://127.0.0.1:6443 으로 적혀 있다.
+    # 그건 서버 자기 자신 기준이라 내 PC 에서는 통하지 않으므로 실제 IP 로 바꾼다.
+    # copy 모듈은 내용이 같으면 changed 로 뜨지 않는다 → 멱등하다.
+    - name: kubeconfig 를 내 PC 에 저장 (127.0.0.1 → 실제 IP)
+      ansible.builtin.copy:
+        content: >-
+          {{ kubeconfig_raw.content | b64decode
+             | replace('127.0.0.1', ansible_host | default(inventory_hostname)) }}
+        dest: ./kubeconfig
+        mode: "0600"            # 인증서 파일이므로 권한 제한
+      delegate_to: localhost
+      become: false
+      run_once: true
+      no_log: true
+      when: fetch_kubeconfig | bool
+
+    - name: 사용법 안내
+      ansible.builtin.debug:
+        msg:
+          - "완료. 아래 명령으로 확인해라:"
+          - "  KUBECONFIG=./kubeconfig kubectl get nodes"
+          - "또는 서버에서:  ssh {{ ansible_user }}@{{ ansible_host | default(inventory_hostname) }} 후 kubectl get nodes"
+      run_once: true
