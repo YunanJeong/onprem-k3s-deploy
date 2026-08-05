@@ -14,16 +14,21 @@ vault_pass.txt
 *.decrypted.yml
 
 # 인벤토리 (실제 IP/계정). .example 템플릿만 커밋한다.
-inventory*.ini
-hosts.local
+inventories/**/*.yml
+inventories/**/*.yaml
+inventories/**/*.ini
 !*.example
 
 # fetch 로 서버에서 받아온 파일들이 쌓이는 기본 경로
 fetched/
 
-# 로컬에서 받은 collection/role
-collections/
-roles/external/
+# collections/ 는 커밋한다 (vendoring).
+# 배포 대상 온프레미스는 인터넷이 안 되므로, 레포를 통째로 옮기면
+# ansible-galaxy 없이 바로 실행되도록 collection 을 함께 넣어둔다.
+# 용량 376K, 파일 47개.
+
+# roles/ 는 쓰지 않는다 (collection 이 role 을 내장한다)
+roles/
 
 # uv 가상환경 (uv.lock 은 커밋한다 — 버전 재현성)
 .venv/

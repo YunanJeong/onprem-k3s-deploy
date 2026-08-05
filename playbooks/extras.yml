@@ -1,0 +1,47 @@
+---
+# ══════════════════════════════════════════════════════════════════════
+# 부가 도구 설치 — k3s 와 다른 계층
+#
+# k3s 자체를 까는 것은 공식 collection(k3s.orchestration) 안에 이미 있다.
+# 이 플레이북은 그 위 계층에서 개별로 추가할 것들을 세팅한다.
+#
+#   uv run ansible-playbook k3s.orchestration.site -i inventories/ha/hosts.yml
+#   uv run ansible-playbook playbooks/extras.yml   -i inventories/ha/hosts.yml
+#
+# collection 플레이북과 인벤토리만 공유하고 실행은 완전히 독립이다.
+# 순서 강제나 실패 전파가 없으므로 k3s 구축 후에 돌린다.
+#
+# 설치 도구는 최신 버전을 받는다. 특정 버전이 필요해지면 그때 URL 을 고정한다.
+# ══════════════════════════════════════════════════════════════════════
+
+- name: 부가 도구 설치
+  hosts: server
+  become: true
+  tasks:
+    # 설치 스크립트 방식.
+    # pipefail 없으면 curl 이 실패해도 bash 가 빈 입력을 받고 0 을 반환한다.
+    # → task 는 성공으로 뜨는데 실제로는 아무것도 안 깔린다.
+    - name: helm 설치
+      # get-helm-4 는 helm 4.x 최신을, get-helm-3 은 3.x 최신을 받는다.
+      # 두 계열이 병행 릴리스되므로 스크립트 이름이 곧 메이저 버전 선택이다.
+      ansible.builtin.shell: |
+        set -o pipefail
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash
+      args:
+        creates: /usr/local/bin/helm   # 이 파일 있으면 skip → 재실행 안전
+        executable: /bin/bash          # pipefail 은 bash 기능 (dash 에는 없다)
+      tags: [helm]
+
+    # GitHub 릴리스 tarball 방식. unarchive 가 URL 을 직접 받는다.
+    # latest/download 는 최신 릴리스로 302 리다이렉트된다.
+    # 버전을 고정하려면 latest/download 를 download/v0.51.0 처럼 바꾼다.
+    - name: k9s 설치
+      ansible.builtin.unarchive:
+        src: "https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_amd64.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        include:
+          - k9s
+        mode: "0755"
+        creates: /usr/local/bin/k9s
+      tags: [k9s]

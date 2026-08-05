@@ -1,0 +1,62 @@
+---
+# ── 용례: k3s server 1대 (단일 노드) ─────────────────────────────────
+#
+#   cp inventories/single/hosts.yml.example inventories/single/hosts.yml
+#   uv run ansible-playbook k3s.orchestration.site -i inventories/single/hosts.yml
+#
+# 아래에서 "collection" 은 공식 k3s.orchestration (k3s-io/k3s-ansible) 을 말한다.
+#
+# 그룹 이름(k3s_cluster / server / agent)은 collection 이 요구하는 고정 이름이다.
+# 바꾸면 동작하지 않는다.
+#
+# server 가 1대이므로 embedded etcd 없이 단일 노드로 설치된다.
+# ────────────────────────────────────────────────────────────────────
+k3s_cluster:
+  children:
+    server:
+      hosts:
+        10.0.0.11:
+
+    # 워커 노드가 필요하면 주석을 풀고 IP 를 넣는다.
+    # agent:
+    #   hosts:
+    #     10.0.0.21:
+    #     10.0.0.22:
+
+  vars:
+    ansible_user: myuser
+    ansible_port: 22
+
+    # https://github.com/k3s-io/k3s/releases
+    k3s_version: v1.36.2+k3s1
+
+    # kubectl 이 붙을 API 주소. 기본은 첫 server 노드다.
+    api_endpoint: "{{ hostvars[groups['server'][0]]['ansible_host'] | default(groups['server'][0]) }}"
+
+    # 클러스터 가입 토큰.
+    # 정의하지 않으면 첫 server 가 생성한 값을 collection 이 읽어서 쓴다.
+    # 고정하려면 아래 주석을 풀고 값을 넣되, 평문 커밋은 피하고 vault 를 쓴다.
+    #   openssl rand -base64 64
+    # token: ""
+
+    # ── k3s 부가 옵션 ──────────────────────────────────────────────────
+    # k3s 옵션은 두 방식으로 넘긴다. 둘 다 collection 이 지원한다.
+    # 쓸 수 있는 옵션은 k3s 공식 문서를 본다.
+    #
+    #   1) CLI 인자로 (server/agent 각각)
+    # extra_server_args: "--disable traefik"
+    # extra_agent_args: ""
+    #
+    #   2) config 파일로 — /etc/rancher/k3s/config.yaml 로 저장된다.
+    #      collection 이 넣는 값과 병합되므로 충돌이 덜하다. 들여쓰기 유지.
+    # server_config_yaml: |
+    #   disable:
+    #     - traefik
+    # agent_config_yaml: |
+
+    # 그 외 collection 이 받는 변수:
+    #   registries_config_yaml  사설 레지스트리 (registries.yaml 로 저장)
+    #   extra_install_envs      설치 스크립트 환경변수 (딕셔너리)
+    #   extra_service_envs      k3s 서비스 환경변수 (리스트)
+    #   airgap_dir              오프라인 설치용 아티팩트 경로
+    #   extra_manifests         구축 후 적용할 로컬 매니페스트 목록
