@@ -122,8 +122,8 @@ Ansible 의 배포 단위다. 파이썬 패키지나 Terraform provider 에 해�
 
 - **ansible 자체** — 인터넷 없는 곳에서 `uv sync` 가 안 된다. `.venv` 를 통째로 옮기거나
   wheel 을 미리 받아 함께 옮긴다.
-- **k3s 바이너리·이미지** — 기본 동작은 대상 노드가 `https://get.k3s.io` 로 나가는 방식이라
-  실패한다. 인벤토리에 `airgap_dir` 를 지정하면 **control node 에 미리 둔 파일을 대상
+- **k3s 바이너리·이미지** — 기본 동작은 대상 노드(Ansible Managed Node)가 `https://get.k3s.io` 로 나가는 방식이라
+  실패한다. 인벤토리에 `airgap_dir` 를 지정하면 **로컬작업PC(Ansible Control Node)에 미리 둔 파일을 대상
   노드로 밀어넣는 방식**으로 바뀐다. 그 디렉터리에 k3s 바이너리·이미지 tarball·
   `k3s-install.sh` 를 넣어둬야 한다. **이 레포에는 아직 설정하지 않았다.**
 
