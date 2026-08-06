@@ -33,9 +33,14 @@ k3s_cluster:
     #     10.0.0.21:
     #     10.0.0.22:
 
+  # k3s_cluster 그룹 전체에 적용되는 변수. 접속 정보와 k3s 설정을 여기 둔다.
+  # ansible_ 로 시작하는 것은 Ansible 내장 예약 변수다 (이름 변경 불가).
   vars:
     ansible_user: myuser
     ansible_port: 22
+
+    # 접속 환경에 따라 필요한 변수를 추가한다 (예: 키 인증)
+    # ansible_ssh_private_key_file: ~/.ssh/mykey.pem
 
     # https://github.com/k3s-io/k3s/releases
     k3s_version: v1.36.2+k3s1

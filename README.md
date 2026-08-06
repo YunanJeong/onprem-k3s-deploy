@@ -40,11 +40,21 @@ ssh <server1_ip>
 kubectl get nodes
 ```
 
-3번에서 막히면 전부 SSH 문제다. 플레이북으로 해결되지 않는다.
-비번은 두 번 물어본다(SSH → sudo). 같으면 두 번째는 엔터.
+접속 관련:
 
-내 PC 에 `kubectl` 이 있으면 접속 파일이 `~/.kube/config.new` 로 복사된다
-(기존 `config` 는 덮지 않는다). 경로는 인벤토리의 `kubeconfig` 변수로 바꾼다.
+- 3번에서 막히면 전부 SSH 문제다. 플레이북으로 해결되지 않는다
+- 비번은 두 번 물어본다(SSH → sudo). 같으면 두 번째는 엔터
+- `Host key verification failed` → 내 PC 의 `~/.ssh/known_hosts` 에 서버가 없다(최초 접속 필요).
+  `ssh-keyscan -H <IP> >> ~/.ssh/known_hosts` 로 등록하거나, 명령 앞에
+  `ANSIBLE_HOST_KEY_CHECKING=False` 를 붙여 검사를 끈다
+
+현재 사용중인 `공식 collection playbook은 셋업완료 후, 로컬 kubectl에서 접근가능하도록 kubeconfig 컨텍스트 파일을 자동처리`해준다.
+
+- 내 PC 에 `kubectl` 이 있을 때만 가져온다. 없으면 아무것도 하지 않는다
+- 인벤토리에 `kubeconfig: <경로>` 를 지정하면 그곳에 복사만 한다
+- 지정하지 않으면 `~/.kube/config` 에 `k3s-ansible` 컨텍스트로 병합된다(기존 컨텍스트는 유지).
+  - 이후 `kubectl config use-context k3s-ansible` 로 전환해서 사용가능
+  - 단, collection에서 리셋용 플레이북인 `reset.yaml`를 적용하더라도, 원격환경만 되돌릴뿐 로컬 kubeconfig파일에서 내용은 그대로라서 수동 제거 필요한 점 참고
 
 ## 그 밖의 작업
 
