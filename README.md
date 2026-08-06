@@ -59,18 +59,18 @@ kubectl get nodes
 ## 그 밖의 작업
 
 ```bash
-# 업그레이드 — 인벤토리의 k3s_version 을 바꾼 뒤
-uv run ansible-playbook k3s.orchestration.upgrade -i inventories/ha/hosts.yml --forks=1
-
 # 제거 / 재부팅
 uv run ansible-playbook k3s.orchestration.reset  -i inventories/ha/hosts.yml
 uv run ansible-playbook k3s.orchestration.reboot -i inventories/ha/hosts.yml
 
-# 문법 검사
-uv run ansible-playbook k3s.orchestration.site -i inventories/ha/hosts.yml --syntax-check
-
 # 부가 도구(helm, k9s) — k3s 구축 후. 선택사항
 uv run ansible-playbook playbooks/extras.yml -i inventories/ha/hosts.yml
+
+# 업그레이드 — 인벤토리의 k3s_version 을 바꾼 뒤
+uv run ansible-playbook k3s.orchestration.upgrade -i inventories/ha/hosts.yml --forks=1
+
+# 문법 검사
+uv run ansible-playbook k3s.orchestration.site -i inventories/ha/hosts.yml --syntax-check
 ```
 
 **HA 재실행·업그레이드에는 `--forks=1`** 을 붙인다. 한 대씩 처리해서 etcd 쿼럼을 지킨다.
