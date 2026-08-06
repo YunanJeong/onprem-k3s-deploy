@@ -45,19 +45,25 @@ k3s_cluster:
     # token: ""
 
     # ── k3s 부가 옵션 ──────────────────────────────────────────────────
-    # k3s 옵션은 두 방식으로 넘긴다. 둘 다 collection 이 지원한다.
+    # k3s 옵션은 두 방식으로 넘긴다. 둘 다 collection 이 지원하고,
+    # k3s 가 시작할 때 병합하므로 같이 써도 된다(겹치면 CLI 우선).
     # 쓸 수 있는 옵션은 k3s 공식 문서를 본다.
     #
     #   1) CLI 인자로 (server/agent 각각)
-    # extra_server_args: "--disable traefik"
-    # extra_agent_args: ""
+    #      손으로 설치할 때 이 자리에 붙이던 인자와 같다:
+    #        curl -sfL https://get.k3s.io | sh -s - server --docker --disable traefik
+    #                                                      └──── 여기 ────┘
+    # extra_server_args: "--docker --disable traefik"
+    # extra_agent_args: "--docker"
     #
     #   2) config 파일로 — /etc/rancher/k3s/config.yaml 로 저장된다.
     #      collection 이 넣는 값과 병합되므로 충돌이 덜하다. 들여쓰기 유지.
     # server_config_yaml: |
+    #   docker: true
     #   disable:
     #     - traefik
     # agent_config_yaml: |
+    #   docker: true
 
     # 그 외 collection 이 받는 변수:
     #   registries_config_yaml  사설 레지스트리 (registries.yaml 로 저장)
