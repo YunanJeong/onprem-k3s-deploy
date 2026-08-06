@@ -4,58 +4,87 @@ Ansible 로 K3s 클러스터 구축을 자동화한다.
 설치·HA·업그레이드·제거는 공식 collection [`k3s-io/k3s-ansible`](https://github.com/k3s-io/k3s-ansible)
 (`k3s.orchestration`) 이 담당하고, 이 레포는 **용례별 인벤토리**를 관리한다.
 
-```bash
-uv sync                                                    # 최초 1회
+| 용례 | 구성 |
+|---|---|
+| `single` | server 1대 |
+| `ha` | server 3대, embedded etcd HA |
 
+## 처음 실행
+
+아래는 `ha` 기준이다. 1대 구성은 `ha` → `single` 로 바꾼다.
+
+```bash
+# 1. 도구 설치 (최초 1회)
+uv sync
+sudo apt install sshpass                    # 비번으로 SSH 접속할 때만
+
+# 2. 인벤토리 작성 — IP 와 ansible_user 를 실제 값으로
 cp inventories/ha/hosts.yml.example inventories/ha/hosts.yml
-vi inventories/ha/hosts.yml                                # IP / 계정 / 버전
+vi inventories/ha/hosts.yml
 
+# 3. 연결 확인 (선택) — 전 노드 SUCCESS 나와야 다음으로
+#    필수는 아니지만, 첫 구축이면 SSH 문제를 먼저 걸러낼 수 있다
+#    k3s_cluster : 대상 그룹 이름. 인벤토리에 정의된 전체 노드 그룹
+#    -m ping     : 플레이북 없이 모듈 하나만 실행 (명령이 ansible-playbook 이 아니다)
+#                  ping 모듈 = SSH 접속 + 리모트 Python 실행 확인 (ICMP 아님)
+#    -i          : 인벤토리 파일 지정
+uv run ansible k3s_cluster -m ping -i inventories/ha/hosts.yml
+
+# 4. 구축
+#    k3s.orchestration.site : 실행할 플레이북. collection 의 site 플레이북
+#    -i                     : 인벤토리 파일 지정 (어느 서버에 적용할지)
 uv run ansible-playbook k3s.orchestration.site -i inventories/ha/hosts.yml
+
+# 5. 확인 (server 노드에서)
+ssh <server1_ip>
+kubectl get nodes
 ```
 
-collection 은 `collections/` 에 커밋돼 있어 따로 받지 않아도 된다.
-버전을 올릴 때만 `requirements.yml` 을 수정하고 아래를 실행한다.
+3번에서 막히면 전부 SSH 문제다. 플레이북으로 해결되지 않는다.
+비번은 두 번 물어본다(SSH → sudo). 같으면 두 번째는 엔터.
+
+내 PC 에 `kubectl` 이 있으면 접속 파일이 `~/.kube/config.new` 로 복사된다
+(기존 `config` 는 덮지 않는다). 경로는 인벤토리의 `kubeconfig` 변수로 바꾼다.
+
+## 그 밖의 작업
 
 ```bash
-uv run ansible-galaxy collection install -r requirements.yml --force
+# 업그레이드 — 인벤토리의 k3s_version 을 바꾼 뒤
+uv run ansible-playbook k3s.orchestration.upgrade -i inventories/ha/hosts.yml --forks=1
+
+# 제거 / 재부팅
+uv run ansible-playbook k3s.orchestration.reset  -i inventories/ha/hosts.yml
+uv run ansible-playbook k3s.orchestration.reboot -i inventories/ha/hosts.yml
+
+# 문법 검사
+uv run ansible-playbook k3s.orchestration.site -i inventories/ha/hosts.yml --syntax-check
+
+# 부가 도구(helm, k9s) — k3s 구축 후. 선택사항
+uv run ansible-playbook playbooks/extras.yml -i inventories/ha/hosts.yml
 ```
 
-## 용례
+**HA 재실행·업그레이드에는 `--forks=1`** 을 붙인다. 한 대씩 처리해서 etcd 쿼럼을 지킨다.
 
-| 용례 | 인벤토리 | 구성 |
-|---|---|---|
-| `single` | `inventories/single/` | server 1대 |
-| `ha` | `inventories/ha/` | server 3대, embedded etcd HA |
+## 알아둘 것
 
 **HA 토글은 없다.** `server` 그룹의 호스트 수로 collection 이 판별한다. 2대 이상이면
 자동으로 embedded etcd HA 가 되고, 첫 호스트가 `cluster-init`, 나머지가 합류한다.
 etcd 쿼럼 때문에 server 는 홀수(3, 5, 7)여야 한다.
 
-`ha` 는 3대 모두 server 다. 워커를 붙이려면 인벤토리의 `agent` 블록 주석을 풀고 IP 를 넣는다.
+**`ha` 는 3대 모두 server 다.** 워커를 붙이려면 인벤토리의 `agent` 블록 주석을 풀고
+IP 를 넣는다.
 
 **용례 추가**는 `inventories/<이름>/hosts.yml.example` 을 하나 더 만들면 된다.
 플레이북은 collection 것을 공용으로 쓴다.
 
-## 실행
+**이름은 바꾸면 안 된다.** 그룹 이름(`k3s_cluster`, `server`, `agent`)과
+변수 이름(`k3s_version`, `token`, `api_endpoint` 등)은 collection 규약이다.
 
-```bash
-uv run ansible-playbook k3s.orchestration.site    -i <인벤토리>   # 구축
-uv run ansible-playbook k3s.orchestration.upgrade -i <인벤토리>   # 업그레이드
-uv run ansible-playbook k3s.orchestration.reset   -i <인벤토리>   # 제거
-uv run ansible-playbook k3s.orchestration.reboot  -i <인벤토리>   # 재부팅
+**리모트 요구사항**은 SSH + Python 3 + sudo 뿐이다. 에이전트 설치는 없다.
 
-uv run ansible k3s_cluster -m ping -i <인벤토리>                  # 연결 확인
-uv run ansible-playbook k3s.orchestration.site -i <인벤토리> --syntax-check
-```
-
-**HA 재실행·업그레이드에는 `--forks=1`** 을 붙인다. 한 대씩 처리해서 etcd 쿼럼을 지킨다.
-
-그룹 이름(`k3s_cluster`, `server`, `agent`)과 변수 이름(`k3s_version`, `token`,
-`api_endpoint` 등)은 collection 규약이라 바꾸면 동작하지 않는다.
-
-실행 시 비번을 두 번 물어본다(SSH, sudo). 같으면 두 번째는 엔터.
-비번 인증을 쓰면 `sudo apt install sshpass` 가 필요하다.
-리모트 요구사항은 SSH + Python 3 + sudo 이고, 에이전트 설치는 없다.
+**collection 은 `collections/` 에 커밋돼 있어** 따로 받지 않아도 된다.
+버전을 올릴 때만 `requirements.yml` 을 수정하고 `ansible-galaxy collection install
+-r requirements.yml --force` 를 실행한다.
 
 ## Collection 이란
 
@@ -67,7 +96,6 @@ Ansible 의 배포 단위다. 파이썬 패키지나 Terraform provider 에 해�
   격리된다. 전역(`~/.ansible/`)에 깔면 다른 프로젝트와 버전이 섞인다.
 - **호출** — `namespace.name.playbook` 형태(FQCN). `k3s.orchestration.site` 는
   `k3s` 네임스페이스의 `orchestration` collection 에 있는 `site` 플레이북이다.
-  파일 경로를 몰라도 이 이름으로 실행된다.
 
 ## 오프라인(에어갭) 배포
 
@@ -95,6 +123,9 @@ onprem-k3s-deploy/
 │   │   └── hosts.yml.example  #   템플릿만 커밋. hosts.yml 로 복사해서 실제 값 입력
 │   └── ha/
 │       └── hosts.yml.example
+│
+├── playbooks/
+│   └── extras.yml             # 부가 도구(helm, k9s). k3s 와 다른 계층
 │
 ├── collections/               # 받아둔 collection. 오프라인 배포용으로 커밋한다
 │   └── ansible_collections/k3s/orchestration/
