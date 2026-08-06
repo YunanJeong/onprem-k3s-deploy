@@ -59,12 +59,17 @@ kubectl get nodes
 ## 그 밖의 작업
 
 ```bash
-# 제거 / 재부팅
+# 제거 (테스트용 배포 제거 라던지 등등 필요시 사용)
 uv run ansible-playbook k3s.orchestration.reset  -i inventories/ha/hosts.yml
-uv run ansible-playbook k3s.orchestration.reboot -i inventories/ha/hosts.yml
-
+```
+```bash
 # 부가 도구(helm, k9s) — k3s 구축 후. 선택사항
+# 공식 collections에서 제공하는 것외에 추가배포할 것들을 모은 커스텀 플레이북 실행
 uv run ansible-playbook playbooks/extras.yml -i inventories/ha/hosts.yml
+```
+```bash
+# 재부팅
+uv run ansible-playbook k3s.orchestration.reboot -i inventories/ha/hosts.yml
 
 # 문법 검사
 uv run ansible-playbook k3s.orchestration.site -i inventories/ha/hosts.yml --syntax-check
