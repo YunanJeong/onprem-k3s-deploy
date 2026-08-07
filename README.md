@@ -31,12 +31,18 @@ vi inventories/ha/hosts.yml
 # ANSIBLE_HOST_KEY_CHECKING=False SSH 최초 접근시 요구하는 검사를 끈다.(자동화시 사용)
 ANSIBLE_HOST_KEY_CHECKING=False  uv run ansible k3s_cluster -m ping -i inventories/ha/hosts.yml
 
-# 4. 구축
+# 4. 사전 준비 — docker 설치. k3s 를 --docker 로 쓸 거면 필수
+uv run ansible-playbook playbooks/prepare.yml -i inventories/ha/hosts.yml
+
+# 5. 구축
 #    k3s.orchestration.site : 실행할 플레이북. collection 의 site 플레이북
 #    -i                     : 인벤토리 파일 지정 (어느 서버에 적용할지)
 uv run ansible-playbook k3s.orchestration.site -i inventories/ha/hosts.yml
 
-# 5. 확인 (server 노드에서)
+# 6. 부가 설정 — helm, k9s, vimrc, 인증서 갱신 크론
+uv run ansible-playbook playbooks/extras.yml -i inventories/ha/hosts.yml
+
+# 7. 확인 (server 노드에서)
 ssh <server1_ip>
 kubectl get nodes
 ```
@@ -63,9 +69,10 @@ kubectl get nodes
 uv run ansible-playbook k3s.orchestration.reset  -i inventories/ha/hosts.yml
 ```
 ```bash
-# 부가 도구(helm, k9s) — k3s 구축 후. 선택사항
-# 공식 collections에서 제공하는 것외에 추가배포할 것들을 모은 커스텀 플레이북 실행
-uv run ansible-playbook playbooks/extras.yml -i inventories/ha/hosts.yml
+# 커스텀 플레이북 일부만 실행 (--tags)
+#   prepare.yml : docker
+#   extras.yml  : helm, k9s, vimrc, cert_rotate
+uv run ansible-playbook playbooks/extras.yml -i inventories/ha/hosts.yml --tags k9s
 ```
 ```bash
 # 재부팅
@@ -140,8 +147,10 @@ onprem-k3s-deploy/
 │   └── ha/
 │       └── hosts.yml.example
 │
-├── playbooks/
-│   └── extras.yml             # 부가 도구(helm, k9s). k3s 와 다른 계층
+├── playbooks/                 # 커스텀 플레이북. k3s 와 다른 계층
+│   ├── prepare.yml            #   k3s 전 — docker
+│   ├── extras.yml             #   k3s 후 — helm, k9s, vimrc, 인증서 크론
+│   └── files/                 #   다른 저장소와 공유하는 스크립트 원문
 │
 ├── collections/               # 받아둔 collection. 오프라인 배포용으로 커밋한다
 │   └── ansible_collections/k3s/orchestration/

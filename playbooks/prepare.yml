@@ -1,0 +1,35 @@
+---
+# ══════════════════════════════════════════════════════════════════════
+# k3s 구축 전 사전 준비
+#
+#   uv run ansible-playbook playbooks/prepare.yml   -i inventories/ha/hosts.yml   ← 이것
+#   uv run ansible-playbook k3s.orchestration.site  -i inventories/ha/hosts.yml
+#   uv run ansible-playbook playbooks/extras.yml    -i inventories/ha/hosts.yml
+#
+# k3s 를 --docker 로 설치하려면 docker 가 미리 깔려 있어야 한다.
+# collection 은 docker 를 깔아주지 않는다.
+#
+# files/*.sh 는 다른 저장소와 공유하는 스크립트다. 원문 유지를 위해
+# Ansible 로 옮기지 않고 script 모듈로 그대로 실행한다.
+# ══════════════════════════════════════════════════════════════════════
+
+- name: docker 설치 (전 노드)
+  hosts: k3s_cluster
+  become: true
+  tags: [docker]
+  tasks:
+    # USER: become 으로 root 실행되므로 스크립트의 $USER 가 root 가 된다.
+    #       접속 계정이 docker 그룹에 들어가도록 명시한다.
+    - name: docker.sh 실행
+      ansible.builtin.script: files/docker.sh
+      args:
+        creates: /usr/bin/docker      # 이 파일 있으면 skip → 재실행 안전
+      environment:
+        URL_DOCKER: "{{ docker_registry_url | default(omit) }}"
+        USER: "{{ ansible_user }}"
+
+    - name: docker 서비스 활성화
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
