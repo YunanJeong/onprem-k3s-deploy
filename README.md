@@ -28,7 +28,8 @@ vi inventories/ha/hosts.yml
 #    -m ping     : 플레이북 없이 모듈 하나만 실행 (명령이 ansible-playbook 이 아니다)
 #                  ping 모듈 = SSH 접속 + 리모트 Python 실행 확인 (ICMP 아님)
 #    -i          : 인벤토리 파일 지정
-uv run ansible k3s_cluster -m ping -i inventories/ha/hosts.yml
+# ANSIBLE_HOST_KEY_CHECKING=False SSH 최초 접근시 요구하는 검사를 끈다.(자동화시 사용)
+ANSIBLE_HOST_KEY_CHECKING=False  uv run ansible k3s_cluster -m ping -i inventories/ha/hosts.yml
 
 # 4. 구축
 #    k3s.orchestration.site : 실행할 플레이북. collection 의 site 플레이북
@@ -45,8 +46,7 @@ kubectl get nodes
 - 3번에서 막히면 전부 SSH 문제다. 플레이북으로 해결되지 않는다
 - 비번은 두 번 물어본다(SSH → sudo). 같으면 두 번째는 엔터
 - `Host key verification failed` → 내 PC 의 `~/.ssh/known_hosts` 에 서버가 없다(최초 접속 필요).
-  `ssh-keyscan -H <IP> >> ~/.ssh/known_hosts` 로 등록하거나, 명령 앞에
-  `ANSIBLE_HOST_KEY_CHECKING=False` 를 붙여 검사를 끈다
+  `ssh-keyscan -H <IP> >> ~/.ssh/known_hosts` 로 등록하거나, 명령 앞에 `ANSIBLE_HOST_KEY_CHECKING=False` 를 붙여 검사를 끈다
 
 현재 사용중인 `공식 collection playbook은 셋업완료 후, 로컬 kubectl에서 접근가능하도록 kubeconfig 컨텍스트 파일을 자동처리`해준다.
 

@@ -12,9 +12,11 @@
 # 순서 강제나 실패 전파가 없으므로 k3s 구축 후에 돌린다.
 #
 # 설치 도구는 최신 버전을 받는다. 특정 버전이 필요해지면 그때 URL 을 고정한다.
+#
+# play 별로 대상이 다르다. 일부만 돌리려면 --tags 를 쓴다 (helm, k9s, vimrc).
 # ══════════════════════════════════════════════════════════════════════
 
-- name: 부가 도구 설치
+- name: CLI 도구 설치 (server 노드)
   hosts: server
   become: true
   tasks:
@@ -45,3 +47,35 @@
         mode: "0755"
         creates: /usr/local/bin/k9s
       tags: [k9s]
+
+
+# ── 셸 환경 (전 노드) ─────────────────────────────────────────────────
+# 어느 노드에 들어가서든 파일을 편집하므로 server/agent 모두에 적용한다.
+- name: 셸 환경 설정 (전 노드)
+  hosts: k3s_cluster
+  become: true
+  tags: [vimrc]
+  tasks:
+    # vi 와 sudo vi 는 서로 다른 실행 파일이라 설정도 각각 필요하다.
+    # 접속 계정 홈과 /root 양쪽에 넣는다.
+    - name: vimrc 배포
+      ansible.builtin.copy:
+        src: files/vimrc
+        dest: "{{ item }}/.vimrc"
+        mode: "0644"
+      loop:
+        - "~{{ ansible_user }}"
+        - /root
+
+    # vimrc 의 colorscheme 이 TERM 값에 따라 다르게 보인다.
+    # 어느 터미널에서 접속해도 같은 색을 보려면 TERM 을 고정한다.
+    - name: TERM 고정 (색상 일관성)
+      ansible.builtin.lineinfile:
+        path: "{{ item }}/.bashrc"
+        line: "TERM=xterm-256color"
+        regexp: '^TERM='
+        create: true
+        mode: "0644"
+      loop:
+        - "~{{ ansible_user }}"
+        - /root
