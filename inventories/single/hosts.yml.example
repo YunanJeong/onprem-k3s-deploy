@@ -1,14 +1,10 @@
 ---
 # ── 용례: k3s server 1대 (단일 노드) ─────────────────────────────────
-#
 #   cp inventories/single/hosts.yml.example inventories/single/hosts.yml
 #   uv run ansible-playbook k3s.orchestration.site -i inventories/single/hosts.yml
 #
 # 아래에서 "collection" 은 공식 k3s.orchestration (k3s-io/k3s-ansible) 을 말한다.
-#
-# 그룹 이름(k3s_cluster / server / agent)은 collection 이 요구하는 고정 이름이다.
-# 바꾸면 동작하지 않는다.
-#
+# 그룹 이름(k3s_cluster / server / agent)은 collection 이 요구하는 고정 이름이라 바꾸면 안 된다.
 # server 가 1대이므로 embedded etcd 없이 단일 노드로 설치된다.
 # ────────────────────────────────────────────────────────────────────
 k3s_cluster:
@@ -38,30 +34,41 @@ k3s_cluster:
     # kubectl 이 붙을 API 주소. 기본은 첫 server 노드다.
     api_endpoint: "{{ hostvars[groups['server'][0]]['ansible_host'] | default(groups['server'][0]) }}"
 
-    # 클러스터 가입 토큰.
-    # 정의하지 않으면 첫 server 가 생성한 값을 collection 이 읽어서 쓴다.
-    # 고정하려면 아래 주석을 풀고 값을 넣되, 평문 커밋은 피하고 vault 를 쓴다.
-    #   openssl rand -base64 64
+    # 클러스터 가입 토큰. 정의하지 않으면 첫 server 가 생성한 값을 쓴다.
+    # 고정하려면 openssl rand -base64 64 로 만들되 평문 커밋은 피하고 vault 를 쓴다.
     # token: ""
 
-    # ── k3s 부가 옵션 ──────────────────────────────────────────────────
-    # k3s 옵션은 두 방식으로 넘긴다. 둘 다 collection 이 지원하고,
-    # k3s 가 시작할 때 병합하므로 같이 써도 된다(겹치면 CLI 우선).
+    # ── k3s 옵션 ───────────────────────────────────────────────────────
+    # 두 방식이 있고 k3s 가 시작할 때 병합한다(겹치면 CLI 우선).
     # 쓸 수 있는 옵션은 k3s 공식 문서를 본다.
     #
-    #   1) CLI 인자로 (server/agent 각각)
-    #      손으로 설치할 때 이 자리에 붙이던 인자와 같다:
-    #        curl -sfL https://get.k3s.io | sh -s - server --docker --disable traefik
-    #                                                      └──── 여기 ────┘
+    # 1) CLI 인자 — 손으로 설치할 때 붙이던 그 자리다.
+    #      curl -sfL https://get.k3s.io | sh -s - server --docker --disable traefik
+    #                                                    └──── 여기 ────┘
     # extra_server_args: "--docker --disable traefik"
     # extra_agent_args: "--docker"
     #
-    #   2) config 파일로 — /etc/rancher/k3s/config.yaml 로 저장된다.
-    #      collection 이 넣는 값과 병합되므로 충돌이 덜하다. 들여쓰기 유지.
+    # 2) config 파일 — /etc/rancher/k3s/config.yaml 로 저장된다.
+    #    collection 이 넣는 값과 병합되므로 옵션이 많으면 이쪽이 낫다.
     # server_config_yaml: |
     #   docker: true
     #   disable:
     #     - traefik
+    #
+    #   # 조직 내에서 컨테이너 대역을 배정받았으면 지정한다.
+    #   # 기본값(pod 10.42.0.0/16, service 10.43.0.0/16)이 조직 내 대역과 겹치면
+    #   # 파드에서 조직 내 서버로 나가는 트래픽이 가로채인다.
+    #   # 아래는 임의 대역 172.31.2.0/24 를 pod 와 service 로 나눠 쓰는 예시다.
+    #   cluster-cidr: 172.31.2.0/25       # pod CIDR (126개)
+    #   service-cidr: 172.31.2.128/25     # service CIDR (126개)
+    #   cluster-dns: 172.31.2.138         # CoreDNS ClusterIP. service-cidr 안이어야 함
+    #   kube-controller-manager-arg:
+    #     - "node-cidr-mask-size=27"      # pod CIDR 을 노드별로 자르는 크기
+    #
+    #   # /25 를 /27 로 자르면 조각이 4개 → 노드 4대까지, 노드당 파드 30개.
+    #   # 5번째 노드는 대역을 못 받아 파드를 띄우지 못한다.
+    #   # 기본값이 /24 라서 pod CIDR 이 /24 이하면 반드시 지정해야 한다.
+    #   # (개수는 대역 크기 - 2. 네트워크·브로드캐스트 주소가 예약된다)
     # agent_config_yaml: |
     #   docker: true
 
