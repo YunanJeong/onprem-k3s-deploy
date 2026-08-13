@@ -32,7 +32,7 @@ vi inventories/ha/hosts.yml
 ANSIBLE_HOST_KEY_CHECKING=False  uv run ansible k3s_cluster -m ping -i inventories/ha/hosts.yml
 
 # 4. 사전 준비 — docker 설치. k3s 를 --docker 로 쓸 거면 필수
-uv run ansible-playbook playbooks/prepare.yml -i inventories/ha/hosts.yml
+uv run ansible-playbook playbooks/pre-k3s.yml -i inventories/ha/hosts.yml
 
 # 5. 구축
 #    k3s.orchestration.site : 실행할 플레이북. collection 의 site 플레이북
@@ -40,7 +40,7 @@ uv run ansible-playbook playbooks/prepare.yml -i inventories/ha/hosts.yml
 uv run ansible-playbook k3s.orchestration.site -i inventories/ha/hosts.yml
 
 # 6. 부가 설정 — helm, k9s, vimrc, 인증서 갱신 크론
-uv run ansible-playbook playbooks/extras.yml -i inventories/ha/hosts.yml
+uv run ansible-playbook playbooks/post-k3s.yml -i inventories/ha/hosts.yml
 
 # 7. 확인 (server 노드에서)
 ssh <server1_ip>
@@ -70,9 +70,9 @@ uv run ansible-playbook k3s.orchestration.reset  -i inventories/ha/hosts.yml
 ```
 ```bash
 # 커스텀 플레이북 일부만 실행 (--tags)
-#   prepare.yml : docker
-#   extras.yml  : helm, k9s, vimrc, cert_rotate
-uv run ansible-playbook playbooks/extras.yml -i inventories/ha/hosts.yml --tags k9s
+#   pre-k3s.yml  : docker
+#   post-k3s.yml : helm, k9s, kubectl, vimrc, cert_rotate
+uv run ansible-playbook playbooks/post-k3s.yml -i inventories/ha/hosts.yml --tags k9s
 ```
 ```bash
 # 재부팅
@@ -82,11 +82,9 @@ uv run ansible-playbook k3s.orchestration.reboot -i inventories/ha/hosts.yml
 uv run ansible-playbook k3s.orchestration.site -i inventories/ha/hosts.yml --syntax-check
 
 # 업그레이드 — 인벤토리의 k3s_version 을 바꾼 뒤 적용
-# HA 재실행·업그레이드에는 `--forks=1`** 을 붙인다. 한 대씩 처리해서 etcd 쿼럼을 지킨다.
+# HA 재실행·업그레이드에는 --forks=1 을 붙인다. 한 대씩 처리해서 etcd 쿼럼을 지킨다.
 uv run ansible-playbook k3s.orchestration.upgrade -i inventories/ha/hosts.yml --forks=1
 ```
-
-**
 
 ## 알아둘 것
 
@@ -148,8 +146,8 @@ onprem-k3s-deploy/
 │       └── hosts.yml.example
 │
 ├── playbooks/                 # 커스텀 플레이북. k3s 와 다른 계층
-│   ├── prepare.yml            #   k3s 전 — docker
-│   ├── extras.yml             #   k3s 후 — helm, k9s, vimrc, 인증서 크론
+│   ├── pre-k3s.yml            #   k3s 전 — docker
+│   ├── post-k3s.yml           #   k3s 후 — helm, k9s, vimrc, 인증서 크론
 │   └── files/                 #   다른 저장소와 공유하는 스크립트 원문
 │
 ├── collections/               # 받아둔 collection. 오프라인 배포용으로 커밋한다

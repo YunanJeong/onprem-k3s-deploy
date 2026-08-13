@@ -2,9 +2,9 @@
 # ══════════════════════════════════════════════════════════════════════
 # k3s 구축 전 사전 준비
 #
-#   uv run ansible-playbook playbooks/prepare.yml   -i inventories/ha/hosts.yml   ← 이것
+#   uv run ansible-playbook playbooks/pre-k3s.yml   -i inventories/ha/hosts.yml   ← 이것
 #   uv run ansible-playbook k3s.orchestration.site  -i inventories/ha/hosts.yml
-#   uv run ansible-playbook playbooks/extras.yml    -i inventories/ha/hosts.yml
+#   uv run ansible-playbook playbooks/post-k3s.yml  -i inventories/ha/hosts.yml
 #
 # k3s 를 --docker 로 설치하려면 docker 가 미리 깔려 있어야 한다.
 # collection 은 docker 를 깔아주지 않는다.

@@ -2,9 +2,9 @@
 # ══════════════════════════════════════════════════════════════════════
 # k3s 구축 후 부가 설정 — k3s 와 다른 계층
 #
-#   uv run ansible-playbook playbooks/prepare.yml   -i inventories/ha/hosts.yml
+#   uv run ansible-playbook playbooks/pre-k3s.yml   -i inventories/ha/hosts.yml
 #   uv run ansible-playbook k3s.orchestration.site  -i inventories/ha/hosts.yml
-#   uv run ansible-playbook playbooks/extras.yml    -i inventories/ha/hosts.yml   ← 이것
+#   uv run ansible-playbook playbooks/post-k3s.yml  -i inventories/ha/hosts.yml   ← 이것
 #
 # k3s 자체를 까는 것은 공식 collection(k3s.orchestration) 안에 이미 있다.
 # collection 플레이북과 인벤토리만 공유하고 실행은 완전히 독립이다.
@@ -13,7 +13,7 @@
 # 설치 도구는 최신 버전을 받는다. 특정 버전이 필요해지면 그때 URL 을 고정한다.
 #
 # play 별로 대상이 다르다. 일부만 돌리려면 --tags 를 쓴다
-# (helm, k9s, vimrc, cert_rotate).
+# (helm, k9s, kubectl, vimrc, cert_rotate).
 # ══════════════════════════════════════════════════════════════════════
 
 - name: CLI 도구 설치 (server 노드)
@@ -47,6 +47,22 @@
         mode: "0755"
         creates: /usr/local/bin/k9s
       tags: [k9s]
+
+    # 인벤토리에 user_kubectl: false 를 뒀으므로 collection 이 이 설정을 하지 않는다.
+    # 사본(~/.kube/config) 대신 원본을 직접 가리켜서, 인증서 갱신 후에도
+    # 낡지 않게 한다. 원본 권한은 갱신 크론이 644 로 맞춰준다.
+    - name: kubectl 사용 환경 설정
+      ansible.builtin.lineinfile:
+        path: "~{{ ansible_user }}/.bashrc"
+        line: "{{ item }}"
+        regexp: "{{ item | regex_escape }}"
+        create: true
+        mode: "0644"
+      loop:
+        - "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml"
+        - 'alias k="kubectl"'
+        - ". <(kubectl completion bash)"
+      tags: [kubectl]
 
 
 # ── 셸 환경 (전 노드) ─────────────────────────────────────────────────
