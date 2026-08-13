@@ -48,20 +48,34 @@
         creates: /usr/local/bin/k9s
       tags: [k9s]
 
-    # 인벤토리에 user_kubectl: false 를 뒀으므로 collection 이 이 설정을 하지 않는다.
-    # 사본(~/.kube/config) 대신 원본을 직접 가리켜서, 인증서 갱신 후에도
-    # 낡지 않게 한다. 원본 권한은 갱신 크론이 644 로 맞춰준다.
+    # 아래 두 task 는 인벤토리의 user_kubectl: false 를 대신하는 설정이다.
+    # collection 은 kubeconfig 를 ~/.kube/config 로 복사하지만, 그 사본은
+    # 인증서 갱신 크론이 닿지 않아 낡는다. 그래서 원본을 직접 쓴다.
+
+    # 원본은 root 소유 600 이라 접속 계정이 못 읽는다. 소유권만 넘긴다.
+    - name: kubeconfig 소유권을 접속 계정으로
+      ansible.builtin.file:
+        path: /etc/rancher/k3s/k3s.yaml
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0600"
+      tags: [kubectl]
+
+    # blockinfile 을 쓰는 이유는 줄 순서가 보장되어야 하기 때문이다.
+    # complete 는 completion 스크립트가 만드는 __start_kubectl 함수에 의존한다.
     - name: kubectl 사용 환경 설정
-      ansible.builtin.lineinfile:
+      ansible.builtin.blockinfile:
         path: "~{{ ansible_user }}/.bashrc"
-        line: "{{ item }}"
-        regexp: "{{ item | regex_escape }}"
+        marker: "# {mark} Managed by Ansible (playbooks/post-k3s.yml)"
         create: true
         mode: "0644"
-      loop:
-        - "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml"
-        - 'alias k="kubectl"'
-        - ". <(kubectl completion bash)"
+        block: |
+          export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+          # kubectl 자동완성
+          source <(kubectl completion bash)
+          alias k=kubectl
+          # 별칭 k 에도 완성 적용
+          complete -o default -F __start_kubectl k
       tags: [kubectl]
 
 
