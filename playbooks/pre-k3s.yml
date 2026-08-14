@@ -13,11 +13,22 @@
 # Ansible 로 옮기지 않고 script 모듈로 그대로 실행한다.
 # ══════════════════════════════════════════════════════════════════════
 
-- name: docker 설치 (전 노드)
+- name: 사전 준비 (전 노드)
   hosts: k3s_cluster
   become: true
-  tags: [docker]
   tasks:
+    # DNS 없이 도메인을 쓰기 위해 /etc/hosts 에 항목을 넣는다.
+    # 시스템·클라우드가 넣는 항목을 건드리지 않도록 marker 로 구간을 잡는다.
+    # 변수가 없으면 건너뛴다.
+    - name: /etc/hosts 등록
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} Managed by Ansible (playbooks/pre-k3s.yml)"
+        mode: "0644"
+        block: "{{ etc_hosts | join('\n') }}"
+      when: etc_hosts is defined
+      tags: [hosts]
+
     # USER: become 으로 root 실행되므로 스크립트의 $USER 가 root 가 된다.
     #       접속 계정이 docker 그룹에 들어가도록 명시한다.
     - name: docker.sh 실행
@@ -27,9 +38,11 @@
       environment:
         URL_DOCKER: "{{ docker_registry_url | default(omit) }}"
         USER: "{{ ansible_user }}"
+      tags: [docker]
 
     - name: docker 서비스 활성화
       ansible.builtin.systemd:
         name: docker
         state: started
         enabled: true
+      tags: [docker]

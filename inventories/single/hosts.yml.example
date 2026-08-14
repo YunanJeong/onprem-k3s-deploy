@@ -77,6 +77,15 @@ k3s_cluster:
     # agent_config_yaml: |
     #   docker: true
 
+    # /etc/hosts 에 넣을 줄. 적은 그대로 들어간다. 없으면 건너뛴다.
+    # etc_hosts:
+    #   - "x.x.x.x docker.wai nexus.wai"
+    #   - "y.y.y.y git.wai"
+
+    # docker.sh 가 daemon.json 의 레지스트리 주소로 쓴다.
+    # 지정하지 않으면 스크립트 기본값을 쓴다.
+    # docker_registry_url: docker.wai
+
     # 그 외 collection 이 받는 변수:
     #   registries_config_yaml  사설 레지스트리 (registries.yaml 로 저장)
     #   extra_install_envs      설치 스크립트 환경변수 (딕셔너리)
